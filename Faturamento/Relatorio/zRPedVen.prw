@@ -681,7 +681,7 @@ Static Function fMudaLayout()
 	
 	If cLayout == "1"
 		nPosCod  := 0010 //CÛdigo do Produto 
-		nPosDesc := 0045 //Descricao
+		nPosDesc := 0075 //Descricao
 		nPosQuan := 0245 //Quantidade
 		nPosVUni := 0270 //Valor Unitario
 		nPosSTUn := 0295 //Valor Unit√°rio ST

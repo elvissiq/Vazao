@@ -425,11 +425,11 @@ Return
  *---------------------------------------------------------------------*/
 
 Static Function fImpCab()
-	Local cTexto      := ""
+	//Local cTexto      := ""
 	Local nLinCab     := 025
 	Local nLinCabOrig := nLinCab
 	Local cCodBar     := ""
-	Local nColMeiPed  := nColMeio+8+((nColMeio-nColIni)/2)
+	//Local nColMeiPed  := nColMeio+8+((nColMeio-nColIni)/2)
 	Local lCNPJ       := (QRY_ORC->A1_PESSOA != "F")
 	Local cCliAux     := QRY_ORC->CJ_CLIENTE+" "+QRY_ORC->CJ_LOJA+" - "+QRY_ORC->A1_NOME
 	Local cCGC        := ""

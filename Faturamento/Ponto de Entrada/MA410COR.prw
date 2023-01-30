@@ -5,7 +5,7 @@
 /*/{Protheus.doc} MA410COR 
 Ponto-de-Entrada: MA410COR - Alterar cores do browse do cadastro de status do Pedido de Venda
 @author Elvis Siqueira
-@since 19/11/2021
+@since 26/01/2023
 @version 1.0
     @return aCores(vetor) Array com as cores para o "browse"
     @example
@@ -21,9 +21,10 @@ User Function MA410COR()
 				            { "C5_BLQ == '1'"    , "BR_AZUL"},;        // Pedido Bloquedo por regra
 				            { "C5_BLQ == '2'"    , "BR_LARANJA"},;     // Pedido Bloquedo por verba					
 				            { "(U_fn410Vld('W'))", "BR_BRANCO"},;      // Bloqueado por WMS
-				            { "Empty(C5_LIBEROK) .and. Empty(C5_NOTA) .and. Empty(C5_BLQ)","ENABLE"},;  // Pedido em Aberto     
-				            { "C5_BLQ == '9'"    , "BR_PRETO"},;       // Pedido bloqueado por regra (desconto/acrescimo)
-                    { "C5_XAGENCI == 'S'", "BR_PRETO"}}        // Pedido do tipo Agenciamento
+				            { "C5_XFABRIC <> ''" , "BR_VIOLETA"},;     // Pedido do tipo Agenciamento
+                    { "Empty(C5_LIBEROK) .and. Empty(C5_NOTA) .and. Empty(C5_BLQ)","ENABLE"},;  // Pedido em Aberto     
+				            { "C5_BLQ == '9'"    , "BR_PRETO"}}        // Pedido bloqueado por regra (desconto/acrescimo)
+                    
 				
 Return aCores
 
