@@ -2,17 +2,18 @@
 
 /*/{Protheus.doc} MA410MNU
 
-Rotina Principal do Acelerador do RelatÃ³rio do Pedido de Venda
+Este ponto de entrada pode ser utilizado para inserir novas opções no array aRotina.
 
 @type function
 @author TOTVS NORDESTE
-@since 12/02/2019
+@since 17/03/2023
 
 @history 
 /*/
 User Function MA410MNU()
-	  If !IsBlind() 
-               aAdd(aRotina,{'Imprimir Pedido','U_zRPedVen',0,3,0,NIL})
+
+     If !IsBlind() 
+        aAdd(aRotina,{'Imprimir Pedido','U_zRPedVen',0,3,0,NIL})
      EndIf 
 
-Return Nil 
+Return 

@@ -24,7 +24,7 @@ Local aCores := { { "(U_fn410Vld('C'))", "BR_PINK"},;        // Bloqueado por cr
 				  { "C5_BLQ == '1'"    , "BR_AZUL"},;        // Pedido Bloquedo por regra
 				  { "C5_BLQ == '2'"    , "BR_LARANJA"},;     // Pedido Bloquedo por verba					
 				  { "(U_fn410Vld('W'))", "BR_BRANCO"},;      // Bloqueado por WMS
-				  { "C5_XAGENCI == 'S'", "BR_VIOLETA"},;     // Pedido do tipo Agenciamento
+				  { "!Empty(C5_XFABRIC)", "BR_VIOLETA"},;     // Pedido do tipo Agenciamento
 				  { "Empty(C5_LIBEROK).And.Empty(C5_NOTA) .And. Empty(C5_BLQ)",'ENABLE' },;  //Pedido em Aberto     
 				  { "C5_BLQ == '9'"    , "BR_PRETO"}}        // Pedido bloqueado por regra (desconto/acrescimo)
 Return aCores
