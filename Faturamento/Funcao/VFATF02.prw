@@ -11,7 +11,7 @@ Static aFieldsSC5 := {"C5_NUM","C5_CLIENTE","C5_LOJACLI","C5_XNOME","C5_EMISSAO"
 FUNÇÃO VFATF02 - Tela para Gerar comissão dos pedidos de agenciamento
 @OWNER PanCristal
 @VERSION PROTHEUS 12
-@SINCE 17/03/2023
+@SINCE 18/05/2023
 @Tratamento para comissao de Pedidos do tipo agenciamento
 /*/
 //----------------------------------------------------------------------
@@ -34,15 +34,14 @@ Local oModel
 Local oStructSC5 := fnM01SC5()
 Local oStructSZ1 := FWFormStruct(1, 'SZ1')
 Local oStructSZ2 := FWFormStruct(1, 'SZ2')
-Local bLoadZ1    := {|oStructSZ1, lCopy| LoadGridZ1(oStructSZ1, lCopy)}
-Local bLoadZ2    := {|oStructSZ2, lCopy| LoadGridZ2(oStructSZ2, lCopy)}
-Local bLinePre   := {||!FWFldGet("Z1_MARK")}
+Local bLinePre   := {|oGridModel, nLine, cAction, cIDField, xValue, xCurrentValue| linePreGrid(oGridModel, nLine, cAction, cIDField, xValue, xCurrentValue)}
+Local bPost      := {|| FWProcess() }
 
     //Criando o modelo e os relacionamentos
-    oModel := MPFormModel():New('VFATF02M')
+    oModel := MPFormModel():New('VFATF02M',/*bPre*/,bPost,/*bCommit*/,/*bCancel*/)
     oModel:AddFields('SC5MASTER',/*cOwner*/,oStructSC5)
-	  oModel:AddGrid('SZ1DETAIL','SC5MASTER',oStructSZ1,bLinePre,/*bLinePost*/,/*bPre - Grid Inteiro*/,/*bPos - Grid Inteiro*/,bLoadZ1)
-    oModel:AddGrid('SZ2DETAIL','SC5MASTER',oStructSZ2,/*bLinePre*/,/*bLinePost*/,/*bPre - Grid Inteiro*/,/*bPos - Grid Inteiro*/,bLoadZ2)
+	  oModel:AddGrid('SZ1DETAIL','SC5MASTER',oStructSZ1,bLinePre,/*bLinePost*/,/*bPre - Grid Inteiro*/,/*bPos - Grid Inteiro*/,/*bLoad - Carga do modelo manualmente*/)
+    oModel:AddGrid('SZ2DETAIL','SC5MASTER',oStructSZ2,/*bLinePre*/,/*bLinePost*/,/*bPre - Grid Inteiro*/,/*bPos - Grid Inteiro*/,/*bLoad - Carga do modelo manualmente*/)
     
     oModel:SetRelation('SZ1DETAIL',{{'Z1_FILIAL','FWxFilial("SZ1")'},;
                                     {'Z1_PEDIDO','C5_NUM'          };
@@ -54,14 +53,13 @@ Local bLinePre   := {||!FWFldGet("Z1_MARK")}
 
 	  oModel:SetPrimaryKey({})
 
-    //oStructSZ1:SetProperty("Z1_MARK", MODEL_FIELD_WHEN, {||!FWFldGet("Z1_MARK")})
-    //oStructSZ1:SetLPre({||!FWFldGet("Z1_MARK")})
-    oStructSZ1:AddTrigger("Z1_MARK" ,"Z1_DTPAG" ,{||.T.},{||dDataBase})
+    //oStructSZ1:SetProperty("Z1_MARK", MODEL_FIELD_WHEN, {||IIF(FWFldGet("Z1_MARK"),.F.,.T.)})
+    oStructSZ1:AddTrigger("Z1_MARK" ,"Z1_DTPAG" ,{||.T.},{||IIF(Empty(FWFldGet("Z1_DTPAG")),dDataBase,CToD("  /  /    "))})
 
     oModel:GetModel('SZ1DETAIL'):SetOptional(.T.)
     oModel:GetModel('SZ2DETAIL'):SetOptional(.T.)
 
-    oModel:SetDescription("Pedido de Venda - Agenciamento")
+    oModel:SetDescription("Agenciamento")
     oModel:GetModel('SC5MASTER'):SetDescription('Dados do Pedido de Venda')
     oModel:GetModel('SZ1DETAIL'):SetDescription('Parcelas')
     oModel:GetModel('SZ2DETAIL'):SetDescription('Vendedores')
@@ -79,8 +77,8 @@ Local oView
 Local oModel     := FWLoadModel('VFATF02')
 Local oStructSC5 := fnV01SC5()
 Local oStructSZ1 := FWFormStruct(2, 'SZ1')
-Local oStructSZ2 := FWFormStruct(2, 'SZ2')
-     
+Local oStructSZ2 := FWFormStruct(2, 'SZ2')   
+
     //Criando a View
     oView := FWFormView():New()
     oView:SetModel(oModel)
@@ -90,6 +88,8 @@ Local oStructSZ2 := FWFormStruct(2, 'SZ2')
     oView:AddField('VIEW_SC5',oStructSC5,'SC5MASTER')
     oView:AddGrid('VIEW_SZ1', oStructSZ1,'SZ1DETAIL')
     oView:AddGrid('VIEW_SZ2', oStructSZ2,'SZ2DETAIL')
+
+    oView:SetAfterViewActivate({|oView| ViewActv(oView)})
      
     //Setando o dimensionamento de tamanho
     oView:CreateHorizontalBox('CABEC',30)
@@ -109,6 +109,9 @@ Local oStructSZ2 := FWFormStruct(2, 'SZ2')
     oView:EnableTitleView('VIEW_SC5','Dados do Pedido de Venda')
     oView:EnableTitleView('VIEW_SZ1','Parcelas')
     oView:EnableTitleView('VIEW_SZ2','Vendedores')
+
+    oView:SetNoDeleteLine('VIEW_SZ1')
+    oView:SetNoDeleteLine('VIEW_SZ2')
 
 Return oView
 
@@ -166,72 +169,59 @@ Local nId
   
 Return oViewSC5
 
-//-------------------------------------------------------------------
-/*/ Função LoadGridZ1()
-  Carga de Dados no Grid da SZ1 - Parcelas
-/*/
-//-------------------------------------------------------------------
-
-Static Function LoadGridZ1(oStructSZ1, lCopy)
-Local aLoad     := {}
+/*---------------------------------------------------------------------*
+ | Func:  ViewActv                                                     |
+ | Desc:  Realiza o PUT nos campos para gravação na tabela SE1         |
+ | Obs.:  /                                                            |
+ *---------------------------------------------------------------------*/
+Static Function ViewActv(oView)
+Local oModel := FWModelActive() 
+Local oModelSC5 := oModel:GetModel("SC5MASTER")
+Local oModelSZ1 := oModel:GetModel("SZ1DETAIL")
+Local oModelSZ2 := oModel:GetModel("SZ2DETAIL")
+Local cNomeCli  := Posicione("SA1",1,FWxFilial("SA1")+SC5->C5_CLIENTE+SC5->C5_LOJACLI,"A1_NOME")
 Local nTotalPed := zTotPed(SC5->C5_NUM)
 Local aParcelas := Condicao(nTotalPed,SC5->C5_CONDPAG,0,SC5->C5_EMISSAO,0) //Condicao(nValTot,cCond,nVIPI,dData,nVSol)
+Local cCodVend  := ""
+Local cNomVend  := ""
+Local nPComis   := 0
 Local nY 
 
-    For nY := 1 To Len(aParcelas)
+  DBSelectArea("SC5")
+  SC5->(DBSetOrder(1))
+  If SC5->(MsSeek(xFilial("SC5")+SC5->C5_NUM))
+        oModelSC5:SetValue("C5_NUM"     , SC5->C5_NUM    )
+        oModelSC5:SetValue("C5_CLIENTE" , SC5->C5_CLIENTE)
+        oModelSC5:SetValue("C5_LOJACLI" , SC5->C5_LOJACLI)
+        oModelSC5:SetValue("C5_XNOME"   , cNomeCli       )
+        oModelSC5:SetValue("C5_EMISSAO" , SC5->C5_EMISSAO)
+        oModelSC5:SetValue("C5_XFABRIC" , SC5->C5_XFABRIC)
+        oModelSC5:SetValue("C5_XLOJFAB" , SC5->C5_XLOJFAB)
+        oModelSC5:SetValue("C5_XNFABRI" , SC5->C5_XNFABRI)
+        oView:Refresh('VIEW_SC5')
+  EndIf
+
+  For nY := 1 To Len(aParcelas)
       DBSelectArea("SZ1")
       SZ1->(DBSetOrder(2))
       If !SZ1->(DBSeek(FWxFilial("SZ1")+SC5->C5_NUM+SC5->C5_CONDPAG+StrZero(nY,3)))
-        aAdd(aLoad,{0,{FWxFilial("SZ1"),;     //Z1_FILIAL
-                     .F.,;                    //Z1_MARK
-                     StrZero(nY,3),;          //Z1_SEQ
-                     aParcelas[nY][2],;       //Z1_VALOR
-                     aParcelas[nY][1],;       //Z1_VENCTO
-                     CToD("  /  /    "),;     //Z1_DTPAG
-                     SC5->C5_NUM,;            //Z1_PEDIDO
-                     SC5->C5_CONDPAG}})       //Z1_CONDPAG 
           
-          //Grava dados na Tabla
-          RecLock("SZ1", .T.)	
-            SZ1->Z1_FILIAL  := FWxFilial("SZ1")	
-            SZ1->Z1_MARK    := .F.
-            SZ1->Z1_SEQ     := StrZero(nY,3)
-            SZ1->Z1_VALOR   := aParcelas[nY][2]
-            SZ1->Z1_VENCTO  := aParcelas[nY][1]
-            SZ1->Z1_DTPAG   := CToD("  /  /    ")
-            SZ1->Z1_PEDIDO  := SC5->C5_NUM
-            SZ1->Z1_CONDPAG := SC5->C5_CONDPAG
-          SZ1->(MsUnLock())
+          If nY > 1 
+            oModelSZ1:AddLine()
+          EndIf 
 
-        Else 
+          oModelSZ1:SetValue("Z1_MARK"    , .F.)
+          oModelSZ1:SetValue("Z1_SEQ"     , StrZero(nY,3))
+          oModelSZ1:SetValue("Z1_VALOR"   , aParcelas[nY][2])
+          oModelSZ1:SetValue("Z1_VENCTO"  , aParcelas[nY][1])
+          oModelSZ1:SetValue("Z1_DTPAG"   , CToD("  /  /    "))
+          oModelSZ1:SetValue("Z1_PEDIDO"  , SC5->C5_NUM)
+          oModelSZ1:SetValue("Z1_CONDPAG" , SC5->C5_CONDPAG)
 
-          aAdd(aLoad,{0,{FWxFilial("SZ1"),;   //Z1_FILIAL
-                     SZ1->Z1_MARK,;           //Z1_MARK
-                     SZ1->Z1_SEQ,;            //Z1_SEQ
-                     SZ1->Z1_VALOR,;          //Z1_VALOR
-                     SZ1->Z1_VENCTO,;         //Z1_VENCTO
-                     SZ1->Z1_DTPAG,;          //Z1_DTPAG
-                     SZ1->Z1_PEDIDO,;         //Z1_PEDIDO
-                     SZ1->Z1_CONDPAG}})       //Z1_CONDPAG  
-        
       EndIf
-    Next nY 
+  Next nY
 
-Return aLoad
-
-//-------------------------------------------------------------------
-/*/ Função LoadGridZ2()
-  Carga de Dados no Grid da SZ2 - Vendedores
-/*/
-//-------------------------------------------------------------------
-Static Function LoadGridZ2(oStructSZ2, lCopy)
-Local aLoad    := {}
-Local cCodVend := ""
-Local cNomVend := ""
-Local nPComis  := 0
-Local nY
-
-    For nY := 1 To 5
+  For nY := 1 To 5
       If !Empty(SC5->&("C5_VEND"+(cValToChar(nY))))
         
         cCodVend := SC5->&("C5_VEND"+(cValToChar(nY)))
@@ -242,31 +232,33 @@ Local nY
         SZ2->(DBSetOrder(2))
         If !SZ2->(DBSeek(FWxFilial("SZ2")+SC5->C5_NUM+cCodVend))
 
-            aAdd(aLoad,{0,{FWxFilial("SZ2"),SC5->C5_NUM,nPComis,cCodVend,cNomVend}}) 
+            If nY > 1 
+              oModelSZ2:AddLine()
+            EndIf
+          
+            oModelSZ2:SetValue("Z2_PEDIDO"  , SC5->C5_NUM)
+            oModelSZ2:SetValue("Z2_PCOMIS"  , nPComis)
+            oModelSZ2:SetValue("Z2_CODVEN"  , cCodVend)
+            oModelSZ2:SetValue("Z2_NOMVEND" , cNomVend)
 
-            //Grava dados na Tabla
-            RecLock("SZ2", .T.)	
-              SZ2->Z2_FILIAL  := FWxFilial("SZ2")	
-              SZ2->Z2_PEDIDO  := SC5->C5_NUM
-              SZ2->Z2_PCOMIS  := nPComis
-              SZ2->Z2_CODIGO  := cCodVend
-              SZ2->Z2_NOME    := cNomVend
-            SZ2->(MsUnLock())
-          Else 
-
-            aAdd(aLoad,{0,{FWxFilial("SZ2"),SZ2->Z2_PEDIDO,SZ2->Z2_PCOMIS,SZ2->Z2_CODIGO,SZ2->Z2_NOME}}) 
-        
         EndIf
       EndIf 
-    Next nY  
+  Next nY 
 
-Return aLoad
+  oModelSZ1:GoLine(1)
+  oView:Refresh('VIEW_SZ1')
+  oModelSZ2:GoLine(1)
+  oView:Refresh('VIEW_SZ2')
+  oView:SetNoInsertLine('VIEW_SZ1')
+  oView:SetNoInsertLine('VIEW_SZ2')
 
-//-------------------------------------------------------------------
-/*/ Função zTotPed()
-  Retorna o total do Pedido com os impostos
-/*/
-//-------------------------------------------------------------------
+Return
+
+/*---------------------------------------------------------------------*
+ | Func:  zTotPed                                                      |
+ | Desc:  Retorna o total do Pedido com os impostos                    |
+ | Obs.:  /                                                            |
+ *---------------------------------------------------------------------*/
 Static Function zTotPed(cNumPed)
 Local aArea     := GetArea()
 Local aAreaC5   := SC5->(GetArea())
@@ -362,3 +354,141 @@ Local nNritem   := 0
     RestArea(aAreaC5)
     RestArea(aArea)
 Return nValPed
+
+/*---------------------------------------------------------------------*
+ | Func:  LinePreGrid                                                  |
+ | Desc:  Validações nas linhas do Grid                                |
+ | Obs.:  /                                                            |
+ *---------------------------------------------------------------------*/
+Static Function LinePreGrid(oGridModel, nLine, cAction, cIDField, xValue, xCurrentValue)   
+Local oModel := FWModelActive() 
+Local oModelSZ2 := oModel:GetModel("SZ2DETAIL")
+Local lRet      := .T.
+Local nValComis := 0  
+Local nId 
+   
+   If cAction == "SETVALUE"
+      If cIDField == "Z1_MARK"
+         DBSelectArea("SZ1")
+         SZ1->(DBSetOrder(2))
+         If SZ1->(DBSeek(FWxFilial("SZ1")+SC5->C5_NUM+SC5->C5_CONDPAG+FWFldGet("Z1_SEQ")))
+            If SZ1->Z1_MARK
+              lRet := .F. 
+            EndIf
+         EndIf
+
+         If lRet 
+            For nId := 1 To oModelSZ2:Length(.T.)
+              
+              oModelSZ2:SetLine(nId)
+              nValComis := oModelSZ2:GetValue("Z2_VALOR")
+
+              Do Case 
+                  Case !xCurrentValue
+                      
+                      nValComis += Round(FWFldGet("Z1_VALOR") * (oModelSZ2:GetValue("Z2_PCOMIS")/100),2)
+                      oModelSZ2:SetValue("Z2_VALOR", nValComis )
+
+                  Case (xCurrentValue)
+                      
+                      nValComis := (nValComis - Round(FWFldGet("Z1_VALOR") * (oModelSZ2:GetValue("Z2_PCOMIS")/100),2))
+                      oModelSZ2:SetValue("Z2_VALOR", nValComis )
+
+              End Do 
+            Next nId 
+        EndIf         
+      EndIf
+   EndIf
+   
+Return lRet
+
+/*---------------------------------------------------------------------*
+ | Func:  FWProcess                                                    |
+ | Desc:  Gera Pedido de Venda para emissão de NFS-e                   |
+ | Obs.:  /                                                            |
+ *---------------------------------------------------------------------*/
+Static Function FWProcess()
+Local nId
+
+Private oModel    := FWModelActive()
+Private oModelSZ1 := oModel:GetModel("SZ1DETAIL")
+Private oModelSZ2 := oModel:GetModel("SZ2DETAIL")
+Private nValor    := 0
+Private lMsHelpAuto := .T.
+Private lMsErroAuto := .F. 
+Private lRet        := .T.
+
+For nId := 1 To oModelSZ1:Length(.T.)
+  oModelSZ1:SetLine(nId)
+  If oModelSZ1:IsUpdated(nId)
+        
+    nValor += oModelSZ1:GetValue("Z1_VALOR")
+
+  EndIf 
+Next nId
+
+If nValor > 0
+  RptStatus({|| FWProcNFSe()}, "Aguarde...", "Gravando Pedido de Venda...")
+EndIf 
+
+Return lRet
+
+/*---------------------------------------------------------------------*
+ | Func:  FWProcNFSe()                                                 |
+ | Desc:  Grava Pedido de Venda para emissão da NFS-e                  |
+ | Obs.:  /                                                            |
+ *---------------------------------------------------------------------*/
+Static Function FWProcNFSe(oProcess)
+Local aCabec    := {}
+Local aItens    := {}
+Local aLinha    := {}
+Local cCondPag  := SuperGetMV("MV_CONDPAD")
+Local cNaturez  := SuperGetMV("VZ_NATSERV")
+Local cDescServ := SuperGetMV("VZ_DESCSER")
+Local cCodProd  := SuperGetMV("VZ_PRDSERV")
+Local cTES      := SuperGetMV("VZ_TESSERV")
+Local nId 
+
+      aadd(aCabec, {"C5_TIPO"   , "N",             Nil})
+      aadd(aCabec, {"C5_CLIENTE", SC5->C5_XFABRIC, Nil})
+      aadd(aCabec, {"C5_LOJACLI", SC5->C5_XLOJFAB, Nil})
+      aadd(aCabec, {"C5_CONDPAG", cCondPag,        Nil})
+      aadd(aCabec, {"C5_TIPLIB" , "1",             Nil})
+      aadd(aCabec, {"C5_NATUREZ", cNaturez,        Nil})
+      aadd(aCabec, {"C5_XMSGNFE", cDescServ,       Nil})
+      For nId := 1 To oModelSZ2:Length(.T.)          
+        oModelSZ2:SetLine(nId)
+        If oModelSZ2:IsUpdated(nId)
+            
+            aadd(aCabec, {"C5_VEND"+(cValToChar(nId)),  oModelSZ2:GetValue("Z2_CODVEN"),  Nil})
+            aadd(aCabec, {"C5_COMIS"+(cValToChar(nId)), oModelSZ2:GetValue("Z2_PCOMIS"),  Nil})
+
+        EndIf 
+      Next nId
+
+      aLinha := {}
+      aadd(aLinha,{"C6_ITEM",    "01",      Nil})
+      aadd(aLinha,{"C6_PRODUTO", cCodProd,  Nil})
+      aadd(aLinha,{"C6_QTDVEN",  1,         Nil})
+      aadd(aLinha,{"C6_PRCVEN",  nValor,    Nil})
+      aadd(aLinha,{"C6_PRUNIT",  nValor,    Nil})
+      aadd(aLinha,{"C6_TES",     cTES,      Nil})
+      aadd(aItens, aLinha)
+      
+      
+      Begin Transaction
+          SetRegua(1)
+          IncRegua()
+          lMsErroAuto := .F.
+          MSExecAuto({|a, b, c, d| MATA410(a, b, c, d)}, aCabec, aItens, 3, .F.)
+          
+          If lMsErroAuto
+              MostraErro()
+              DisarmTransaction()
+              lRet := .F.
+          Else 
+            FWAlertSuccess("Pedido de Venda: "+SC5->C5_NUM+", gravado com sucesso.", "Pedido de Venda (Serviço)")
+          EndIf
+      End Transaction
+   
+Return

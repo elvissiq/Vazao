@@ -13,7 +13,7 @@ Static cAlias  := "SC5"
 FUNÇÃO VFATF01 - Tela para Gerar comissão dos pedidos de agenciamento
 @OWNER PanCristal
 @VERSION PROTHEUS 12
-@SINCE 17/03/2023
+@SINCE 18/05/2023
 @Tratamento para comissao de Pedidos do tipo agenciamento
 /*/
 //----------------------------------------------------------------------
@@ -45,7 +45,7 @@ Return
 Static Function MenuDef()
     Local aRotina := {}
  
-    ADD OPTION aRotina TITLE "Consultar Parcelas" ACTION "U_ProcParc()" OPERATION 1 ACCESS 0
+    ADD OPTION aRotina TITLE "Gerar Parcelas" ACTION "U_ProcParc()" OPERATION 1 ACCESS 0
     ADD OPTION aRotina TITLE "Visualizar Pedido"  ACTION "MatA410(,,,,'A410Visual')" OPERATION 1 ACCESS 0 
  
 Return aRotina
@@ -107,7 +107,7 @@ User Function PStatus(pTipo)
   
   cQuery := "Select SZ1.Z1_MARK From " + RetSqlName("SZ1") + " SZ1"
   cQuery += "  where SZ1.D_E_L_E_T_ <> '*'"
-  cQuery += "    and SZ1.Z1_FILIAL  = '" + FWxFilial("SZ1") + "'"
+  cQuery += "    and SZ1.Z1_FILIAL  = '" + SC5->C5_FILIAL + "'"
   cQuery += "    and SZ1.Z1_PEDIDO  = '" + SC5->C5_NUM + "'"
   TCQuery cQuery New Alias "QSZ1"
   Count To nTotQry
