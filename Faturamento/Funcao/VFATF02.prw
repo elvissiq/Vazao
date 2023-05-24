@@ -5,6 +5,7 @@
 #Include "TopConn.ch"
 
 Static aFieldsSC5 := {"C5_NUM","C5_CLIENTE","C5_LOJACLI","C5_XNOME","C5_EMISSAO","C5_XFABRIC","C5_XLOJFAB","C5_XNFABRI"}
+Static cToken     := ""
 
 //----------------------------------------------------------------------
 /*/{PROTHEUS.DOC} VFATF02
@@ -18,7 +19,7 @@ FUNÇÃO VFATF02 - Tela para Gerar comissão dos pedidos de agenciamento
 
 
 User Function VFATF02()
-Local aArea    := GetArea()
+Local aArea := GetArea()
 
 RestArea(aArea)
 Return
@@ -53,8 +54,8 @@ Local bPost      := {|| FWProcess() }
 
 	  oModel:SetPrimaryKey({})
 
-    //oStructSZ1:SetProperty("Z1_MARK", MODEL_FIELD_WHEN, {||IIF(FWFldGet("Z1_MARK"),.F.,.T.)})
     oStructSZ1:AddTrigger("Z1_MARK" ,"Z1_DTPAG" ,{||.T.},{||IIF(Empty(FWFldGet("Z1_DTPAG")),dDataBase,CToD("  /  /    "))})
+    oStructSZ1:AddTrigger("Z1_MARK" ,"Z1_TOKEN" ,{||.T.},{|| xGetToken() })
 
     oModel:GetModel('SZ1DETAIL'):SetOptional(.T.)
     oModel:GetModel('SZ2DETAIL'):SetOptional(.T.)
@@ -171,7 +172,7 @@ Return oViewSC5
 
 /*---------------------------------------------------------------------*
  | Func:  ViewActv                                                     |
- | Desc:  Realiza o PUT nos campos para gravação na tabela SE1         |
+ | Desc:  Realiza o PUT nos campos para preenchimento dos Grids        |
  | Obs.:  /                                                            |
  *---------------------------------------------------------------------*/
 Static Function ViewActv(oView)
@@ -184,6 +185,7 @@ Local nTotalPed := zTotPed(SC5->C5_NUM)
 Local aParcelas := Condicao(nTotalPed,SC5->C5_CONDPAG,0,SC5->C5_EMISSAO,0) //Condicao(nValTot,cCond,nVIPI,dData,nVSol)
 Local cCodVend  := ""
 Local cNomVend  := ""
+Local cVendPad  := SuperGetMV("MV_VENDPAD",.F.,"000000")
 Local nPComis   := 0
 Local nY 
 
@@ -221,6 +223,13 @@ Local nY
       EndIf
   Next nY
 
+  //Preenche o Vendedor padrão
+  oModelSZ2:SetValue("Z2_PEDIDO"  , SC5->C5_NUM)
+  oModelSZ2:SetValue("Z2_PCOMIS"  , 5.00)
+  oModelSZ2:SetValue("Z2_CODVEN"  , cVendPad)
+  oModelSZ2:SetValue("Z2_NOMVEND" , Alltrim(Posicione("SA3",1,FWxFilial("SA3")+cVendPad,"A3_NOME")))
+
+  //Preenche os vendedores do Pedido de Venda
   For nY := 1 To 5
       If !Empty(SC5->&("C5_VEND"+(cValToChar(nY))))
         
@@ -232,15 +241,13 @@ Local nY
         SZ2->(DBSetOrder(2))
         If !SZ2->(DBSeek(FWxFilial("SZ2")+SC5->C5_NUM+cCodVend))
 
-            If nY > 1 
-              oModelSZ2:AddLine()
-            EndIf
-          
+            oModelSZ2:AddLine()
+                      
             oModelSZ2:SetValue("Z2_PEDIDO"  , SC5->C5_NUM)
             oModelSZ2:SetValue("Z2_PCOMIS"  , nPComis)
             oModelSZ2:SetValue("Z2_CODVEN"  , cCodVend)
             oModelSZ2:SetValue("Z2_NOMVEND" , cNomVend)
-
+          
         EndIf
       EndIf 
   Next nY 
@@ -361,7 +368,8 @@ Return nValPed
  | Obs.:  /                                                            |
  *---------------------------------------------------------------------*/
 Static Function LinePreGrid(oGridModel, nLine, cAction, cIDField, xValue, xCurrentValue)   
-Local oModel := FWModelActive() 
+Local oModel := FWModelActive()
+Local oView  := FwViewActive()
 Local oModelSZ2 := oModel:GetModel("SZ2DETAIL")
 Local lRet      := .T.
 Local nValComis := 0  
@@ -383,6 +391,8 @@ Local nId
               oModelSZ2:SetLine(nId)
               nValComis := oModelSZ2:GetValue("Z2_VALOR")
 
+              oModelSZ2:SetValue("Z2_TOKEN", cToken )
+
               Do Case 
                   Case !xCurrentValue
                       
@@ -400,6 +410,9 @@ Local nId
       EndIf
    EndIf
    
+  oModelSZ2:GoLine(1)
+  oView:Refresh('VIEW_SZ2')
+
 Return lRet
 
 /*---------------------------------------------------------------------*
@@ -409,27 +422,44 @@ Return lRet
  *---------------------------------------------------------------------*/
 Static Function FWProcess()
 Local nId
-
+Local cNomeReduz  := "" 
 Private oModel    := FWModelActive()
-Private oModelSZ1 := oModel:GetModel("SZ1DETAIL")
 Private oModelSZ2 := oModel:GetModel("SZ2DETAIL")
 Private nValor    := 0
+Private aCabec    := {}
+Private aItens    := {}
+Private aLinha    := {}
 Private lMsHelpAuto := .T.
-Private lMsErroAuto := .F. 
+Private lMsErroAuto := .F.
+Private cNumPedGer  := ""
 Private lRet        := .T.
 
-For nId := 1 To oModelSZ1:Length(.T.)
-  oModelSZ1:SetLine(nId)
-  If oModelSZ1:IsUpdated(nId)
+For nId := 2 To oModelSZ2:Length(.T.)
+    oModelSZ2:SetLine(nId)
+    If oModelSZ2:IsUpdated(nId)
+            
+      nValor := oModelSZ2:GetValue("Z2_VALOR")
+      cToken := oModelSZ2:GetValue("Z2_VALOR")
         
-    nValor += oModelSZ1:GetValue("Z1_VALOR")
+      If nValor > 0 .AND. lRet
+        cNomeReduz := Alltrim(Posicione("SA3",1,FWxFilial("SA3")+oModelSZ2:GetValue("Z2_CODVEN"),"A3_NREDUZ"))
+        FWMsgRun(, {|| FWProcTitP()},"Aguarde...","Gravando Título a Pagar para o Vendedor: "+cNomeReduz)
+      EndIf
 
-  EndIf 
+    EndIf
 Next nId
 
-If nValor > 0
-  RptStatus({|| FWProcNFSe()}, "Aguarde...", "Gravando Pedido de Venda...")
-EndIf 
+nValor := 0
+
+If oModelSZ2:IsUpdated(1)
+  oModelSZ2:SetLine(1)  
+  nValor := oModelSZ2:GetValue("Z2_VALOR")
+
+  If nValor > 0
+    FWMsgRun(, {|| FWProcNFSe()},"Aguarde...","Gravando Pedido de Venda...")
+  EndIf
+
+EndIf
 
 Return lRet
 
@@ -438,16 +468,12 @@ Return lRet
  | Desc:  Grava Pedido de Venda para emissão da NFS-e                  |
  | Obs.:  /                                                            |
  *---------------------------------------------------------------------*/
-Static Function FWProcNFSe(oProcess)
-Local aCabec    := {}
-Local aItens    := {}
-Local aLinha    := {}
+Static Function FWProcNFSe()
 Local cCondPag  := SuperGetMV("MV_CONDPAD")
 Local cNaturez  := SuperGetMV("VZ_NATSERV")
 Local cDescServ := SuperGetMV("VZ_DESCSER")
 Local cCodProd  := SuperGetMV("VZ_PRDSERV")
 Local cTES      := SuperGetMV("VZ_TESSERV")
-Local nId 
 
       aadd(aCabec, {"C5_TIPO"   , "N",             Nil})
       aadd(aCabec, {"C5_CLIENTE", SC5->C5_XFABRIC, Nil})
@@ -456,15 +482,6 @@ Local nId
       aadd(aCabec, {"C5_TIPLIB" , "1",             Nil})
       aadd(aCabec, {"C5_NATUREZ", cNaturez,        Nil})
       aadd(aCabec, {"C5_XMSGNFE", cDescServ,       Nil})
-      For nId := 1 To oModelSZ2:Length(.T.)          
-        oModelSZ2:SetLine(nId)
-        If oModelSZ2:IsUpdated(nId)
-            
-            aadd(aCabec, {"C5_VEND"+(cValToChar(nId)),  oModelSZ2:GetValue("Z2_CODVEN"),  Nil})
-            aadd(aCabec, {"C5_COMIS"+(cValToChar(nId)), oModelSZ2:GetValue("Z2_PCOMIS"),  Nil})
-
-        EndIf 
-      Next nId
 
       aLinha := {}
       aadd(aLinha,{"C6_ITEM",    "01",      Nil})
@@ -475,10 +492,7 @@ Local nId
       aadd(aLinha,{"C6_TES",     cTES,      Nil})
       aadd(aItens, aLinha)
       
-      
       Begin Transaction
-          SetRegua(1)
-          IncRegua()
           lMsErroAuto := .F.
           MSExecAuto({|a, b, c, d| MATA410(a, b, c, d)}, aCabec, aItens, 3, .F.)
           
@@ -486,9 +500,153 @@ Local nId
               MostraErro()
               DisarmTransaction()
               lRet := .F.
-          Else 
-            FWAlertSuccess("Pedido de Venda: "+SC5->C5_NUM+", gravado com sucesso.", "Pedido de Venda (Serviço)")
+          Else
+            cNumPedGer := SC5->C5_NUM
+            FWAlertSuccess("Pedido de Venda: "+cNumPedGer+", gravado com sucesso.")
           EndIf
       End Transaction
    
 Return
+
+/*---------------------------------------------------------------------*
+ | Func:  FWProcTitP()                                                 |
+ | Desc:  Grava Título a Pagar para comissão do Vendedor               |
+ | Obs.:  /                                                            |
+ *---------------------------------------------------------------------*/
+Static Function FWProcTitP()
+Local aVetSE2      := {}
+Local cNumero      := xGetNumSE2()
+Local cCodForTitP  := Alltrim(Posicione("SA3",1,FWxFilial("SA3")+oModelSZ2:GetValue("Z2_CODVEN"),"A3_FORNECE"))
+Local cLojForTitP  := Alltrim(Posicione("SA3",1,FWxFilial("SA3")+oModelSZ2:GetValue("Z2_CODVEN"),"A3_LOJA"))
+Local cNatTitP     := SuperGetMV("VZ_NATAGEN")
+Local cDiaMesAG    := SuperGetMV("VZ_DAYAGEN")
+Local dDataVenc    := StoD(Year2Str(dDataBase)+Soma1(Month2Str(dDataBase))+cDiaMesAG)
+
+If Empty(cCodForTitP) .OR. Empty(cLojForTitP)
+  
+  lRet := .F.
+  
+  FWAlertHelp('Não foi identificado o preenchimento dos campos "Fornecedor e Loja" para o vendedor '+oModelSZ2:GetValue("Z2_NOMVEND"),;
+              'Acesse o cadastro do vendedor e preencha os campos (Fornecedor e Loja) disponíveis na aba "Pagamento de Comissão".')
+
+    aAdd(aCabec, {"C5_NUM", cNumPedGer ,Nil})
+    lMsErroAuto := .F.
+    FWMsgRun(, {|| MSExecAuto({|a, b, c| MATA410(a, b, c)}, aCabec, aItens, 5) },;
+               "Aguarde...","Excluindo o Pedido de Venda: "+cNumPedGer)
+
+    If lMsErroAuto
+      MostraErro()
+    EndIf
+
+  Return
+EndIf 
+
+    aAdd(aVetSE2, {"E2_NUM"     , cNumero       , Nil})
+    aAdd(aVetSE2, {"E2_PREFIXO" , "COM"         , Nil})
+    aAdd(aVetSE2, {"E2_TIPO"    , "AGE"         , Nil})
+    aAdd(aVetSE2, {"E2_NATUREZ" , cNatTitP      , Nil})
+    aAdd(aVetSE2, {"E2_FORNECE" , cCodForTitP   , Nil})
+    aAdd(aVetSE2, {"E2_LOJA"    , cLojForTitP   , Nil})
+    aAdd(aVetSE2, {"E2_VENCTO"  , dDataVenc     , Nil})
+    aAdd(aVetSE2, {"E2_VALOR"   , nValor        , Nil})
+    aAdd(aVetSE2, {"E2_CCUSTO"  , "000000001"   , Nil})
+    aAdd(aVetSE2, {"E2_VALOR"   , "GERADO ATRAVES DO PROC. DE AGENCIAMENTO" , Nil})
+
+    Begin Transaction
+        lMsErroAuto := .F.
+        MSExecAuto({|x,y| FINA050(x,y)}, aVetSE2, 3)
+        
+        If lMsErroAuto
+          MostraErro()
+
+          lRet := .F.
+
+          aAdd(aCabec, {"C5_NUM", cNumPedGer ,Nil})
+          lMsErroAuto := .F.
+          FWMsgRun(, {|| MSExecAuto({|a, b, c, d| MATA410(a, b, c, d)}, aCabec, aItens, 5, .F.) },;
+                      "Aguarde...","Excluindo o Pedido de Venda: "+cNumPedGer)
+
+          If lMsErroAuto
+            MostraErro()
+          EndIf 
+
+          DisarmTransaction()
+
+        Else 
+          FWAlertSuccess("Título a Pagar: "+SE2->E2_NUM+", gravado com sucesso.")
+        EndIf
+    End Transaction
+
+Return 
+
+/*---------------------------------------------------------------------*
+ | Func:  xGetNumSE2()                                                 |
+ | Desc:  Gera Código sequencial para o título a pagar do tipo AGE     |
+ | Obs.:  /                                                            |
+ *---------------------------------------------------------------------*/
+Static Function xGetNumSE2()
+Local aArea   := GetArea()
+Local _cAlias := "TMP_"+StrTran(Time(),":","")
+Local cNum    := ""
+
+BeginSql alias _cAlias
+    SELECT
+        E2_NUM
+    FROM
+        %table:SE2% SE2
+    WHERE
+        SE2.E2_FILIAL  = %xfilial:SE2% AND
+        SE2.E2_PREFIXO = 'COM' AND
+        SE2.E2_TIPO    = 'AGE' AND
+        SE2.%notDel% 
+        ORDER BY SE2.E2_NUM DESC
+EndSql
+
+If !(_cAlias)->(EOF())
+  (_cAlias)->(DBGotop())
+  cNum := Soma1((_cAlias)->E2_NUM)
+EndIf
+
+If Empty(cNum)
+  cNum := Soma1(Strzero(0,GetSx3Cache("E2_NUM","X3_TAMANHO")))
+EndIf
+
+(_cAlias)->(dbCloseArea())
+RestArea(aArea)
+
+Return cNum
+
+/*----------------------------------------------------------------------------------------*
+ | Func:  xGetToken()                                                                     |
+ | Desc:  Gera Código sequencial para controle de transação nas parcelas do agenciamento  |
+ | Obs.:  /                                                                               |
+ *---------------------------------------------------------------------------------------*/
+Static Function xGetToken()
+Local aArea   := GetArea()
+Local _cAlias := "TMP_"+StrTran(Time(),":","")
+Local cToken  := ""
+
+BeginSql alias _cAlias
+    SELECT
+        Z1_TOKEN
+    FROM
+        %table:SZ1% SZ1
+    WHERE
+        SZ1.Z1_FILIAL  = %xfilial:SZ1% AND
+        SZ1.%notDel% 
+        ORDER BY SZ1.Z1_TOKEN DESC
+EndSql
+
+If !(_cAlias)->(EOF())
+  (_cAlias)->(DBGotop())
+  cToken := Soma1((_cAlias)->Z1_TOKEN)
+EndIf
+
+If Empty(cToken)
+  cToken := Soma1(Strzero(0,GetSx3Cache("Z1_TOKEN","X3_TAMANHO")))
+EndIf
+
+(_cAlias)->(dbCloseArea())
+RestArea(aArea)
+
+Return cToken

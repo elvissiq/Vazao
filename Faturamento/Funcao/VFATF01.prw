@@ -46,7 +46,8 @@ Static Function MenuDef()
     Local aRotina := {}
  
     ADD OPTION aRotina TITLE "Gerar Parcelas" ACTION "U_ProcParc()" OPERATION 1 ACCESS 0
-    ADD OPTION aRotina TITLE "Visualizar Pedido"  ACTION "MatA410(,,,,'A410Visual')" OPERATION 1 ACCESS 0 
+    ADD OPTION aRotina TITLE "Visualizar Pedido"  ACTION "MatA410(,,,,'A410Visual')" OPERATION 1 ACCESS 0
+    ADD OPTION aRotina TITLE "Estorno"  ACTION "MatA410(,,,,'A410Visual')" OPERATION 1 ACCESS 0
  
 Return aRotina
 
@@ -161,5 +162,17 @@ Return lRet
 User Function ProcParc()
 
   FWExecView("Pedido de Venda: "+SC5->C5_NUM,"VFATF02",MODEL_OPERATION_UPDATE,,{|| .T.},,,)
+
+Return
+
+/*---------------------------------------------------------------------*
+ | Func:  xEstorPac                                                    |
+ | Desc:  Realiza estorno das parcelas, pedido e titulo gerados        |
+ | Obs.:  /                                                            |
+ *---------------------------------------------------------------------*/
+
+User Function xEstorPac()
+
+
 
 Return
