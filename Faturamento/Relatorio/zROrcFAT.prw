@@ -124,6 +124,7 @@ Static Function fMontaRel(oProc)
 	//Variaveis do relatório
 	Local cNomeRel      := "Orcamento_venda_"+FunName()+"_"+RetCodUsr()+"_"+dToS(Date())+"_"+StrTran(Time(), ":", "")
 	Local aSX3Box       := RetSX3Box(GetSX3Cache("CK_XPRZENT", "X3_CBOX"),,,1)
+	Local nValSV        := 0
 	Private oPrintPvt
 	Private cHoraEx     := Time()
 	Private nPagAtu     := 1
@@ -375,10 +376,14 @@ Static Function fMontaRel(oProc)
 				EndIf
 				
 				nValorTot += QRY_ITE->CK_VALOR
+				If QRY_ITE->B1_TIPO == "SV"
+					nValSV += QRY_ITE->CK_VALOR
+				EndIF
 				QRY_ITE->(DbSkip())
 			EndDo
 			nTotFrete := MaFisRet(, "NF_FRETE")
 			nTotVal := MaFisRet(, "NF_TOTAL")
+			nTotVal := (nTotVal - nValSV)
 			QRY_ITE->(DbCloseArea())
 			MaFisEnd()
 			

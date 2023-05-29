@@ -45,7 +45,7 @@ User Function fn410Vld(pTipo)
   
   cQuery := "Select SC9.C9_BLEST from " + RetSqlName("SC9") + " SC9"
   cQuery += "  where SC9.D_E_L_E_T_ <> '*'"
-  cQuery += "    and SC9.C9_FILIAL  = '" + FWxFilial("SC5") + "'"
+  cQuery += "    and SC9.C9_FILIAL  = '" + SC5->C5_FILIAL + "'"
   cQuery += "    and SC9.C9_PEDIDO  = '" + SC5->C5_NUM + "'"
 
   Do Case
