@@ -5,7 +5,7 @@
 #Include "TopConn.ch"
 
 Static aFieldsSC5 := {"C5_NUM","C5_CLIENTE","C5_LOJACLI","C5_XNOME","C5_EMISSAO","C5_XFABRIC","C5_XLOJFAB","C5_XNFABRI"}
-Static cToken     := ""
+Static cToken     := FWUUID(DToS(Date())+StrTran(Time(),":",""))
 
 //----------------------------------------------------------------------
 /*/{PROTHEUS.DOC} VFATF02
@@ -55,7 +55,6 @@ Local bPost      := {|| FWProcess() }
 	  oModel:SetPrimaryKey({})
 
     oStructSZ1:AddTrigger("Z1_MARK" ,"Z1_DTPAG" ,{||.T.},{||IIF(Empty(FWFldGet("Z1_DTPAG")),dDataBase,CToD("  /  /    "))})
-    oStructSZ1:AddTrigger("Z1_MARK" ,"Z1_TOKEN" ,{||.T.},{|| xGetToken() })
 
     oModel:GetModel('SZ1DETAIL'):SetOptional(.T.)
     oModel:GetModel('SZ2DETAIL'):SetOptional(.T.)
@@ -219,6 +218,7 @@ Local nY
           oModelSZ1:SetValue("Z1_DTPAG"   , CToD("  /  /    "))
           oModelSZ1:SetValue("Z1_PEDIDO"  , SC5->C5_NUM)
           oModelSZ1:SetValue("Z1_CONDPAG" , SC5->C5_CONDPAG)
+          oModelSZ1:SetValue("Z1_TOKEN"   , cToken)
 
       EndIf
   Next nY
@@ -228,6 +228,7 @@ Local nY
   oModelSZ2:SetValue("Z2_PCOMIS"  , 5.00)
   oModelSZ2:SetValue("Z2_CODVEN"  , cVendPad)
   oModelSZ2:SetValue("Z2_NOMVEND" , Alltrim(Posicione("SA3",1,FWxFilial("SA3")+cVendPad,"A3_NOME")))
+  oModelSZ2:SetValue("Z2_TOKEN"   , cToken)
 
   //Preenche os vendedores do Pedido de Venda
   For nY := 1 To 5
@@ -247,6 +248,7 @@ Local nY
             oModelSZ2:SetValue("Z2_PCOMIS"  , nPComis)
             oModelSZ2:SetValue("Z2_CODVEN"  , cCodVend)
             oModelSZ2:SetValue("Z2_NOMVEND" , cNomVend)
+            oModelSZ2:SetValue("Z2_TOKEN"   , cToken)
           
         EndIf
       EndIf 
@@ -391,8 +393,6 @@ Local nId
               oModelSZ2:SetLine(nId)
               nValComis := oModelSZ2:GetValue("Z2_VALOR")
 
-              oModelSZ2:SetValue("Z2_TOKEN", cToken )
-
               Do Case 
                   Case !xCurrentValue
                       
@@ -435,33 +435,87 @@ Private cNumPedGer  := ""
 Private lRet        := .T.
 
 For nId := 2 To oModelSZ2:Length(.T.)
-    oModelSZ2:SetLine(nId)
-    If oModelSZ2:IsUpdated(nId)
-            
-      nValor := oModelSZ2:GetValue("Z2_VALOR")
-      cToken := oModelSZ2:GetValue("Z2_VALOR")
+  oModelSZ2:SetLine(nId)
+  If oModelSZ2:IsUpdated(nId)          
+    nValor := oModelSZ2:GetValue("Z2_VALOR")
         
-      If nValor > 0 .AND. lRet
-        cNomeReduz := Alltrim(Posicione("SA3",1,FWxFilial("SA3")+oModelSZ2:GetValue("Z2_CODVEN"),"A3_NREDUZ"))
-        FWMsgRun(, {|| FWProcTitP()},"Aguarde...","Gravando Título a Pagar para o Vendedor: "+cNomeReduz)
-      EndIf
-
+    If nValor > 0 .And. lRet
+      cNomeReduz := Alltrim(Posicione("SA3",1,FWxFilial("SA3")+oModelSZ2:GetValue("Z2_CODVEN"),"A3_NREDUZ"))
+      FWMsgRun(, {|| FWProcTitP()},"Aguarde...","Gravando Título a Pagar para o Vendedor: "+cNomeReduz)
     EndIf
+  EndIf
 Next nId
 
 nValor := 0
 
-If oModelSZ2:IsUpdated(1)
-  oModelSZ2:SetLine(1)  
-  nValor := oModelSZ2:GetValue("Z2_VALOR")
+If lRet
+  If oModelSZ2:IsUpdated(1)
+    oModelSZ2:SetLine(1)  
+    nValor := oModelSZ2:GetValue("Z2_VALOR")
 
-  If nValor > 0
-    FWMsgRun(, {|| FWProcNFSe()},"Aguarde...","Gravando Pedido de Venda...")
+    If nValor > 0 
+      FWMsgRun(, {|| FWProcNFSe()},"Aguarde...","Gravando Pedido de Venda...")
+    EndIf
+
   EndIf
-
 EndIf
 
+If !lRet 
+  U_FWEstorno()
+EndIf 
+
 Return lRet
+
+/*---------------------------------------------------------------------*
+ | Func:  FWProcTitP()                                                 |
+ | Desc:  Grava Título a Pagar para comissão do Vendedor               |
+ | Obs.:  /                                                            |
+ *---------------------------------------------------------------------*/
+Static Function FWProcTitP()
+Local aVetSE2      := {}
+Local cNumero      := xGetNumSE2()
+Local cCodForTitP  := Alltrim(Posicione("SA3",1,FWxFilial("SA3")+oModelSZ2:GetValue("Z2_CODVEN"),"A3_FORNECE"))
+Local cLojForTitP  := Alltrim(Posicione("SA3",1,FWxFilial("SA3")+oModelSZ2:GetValue("Z2_CODVEN"),"A3_LOJA"))
+Local cNatTitP     := SuperGetMV("VZ_NATAGEN")
+Local cDiaMesAG    := SuperGetMV("VZ_DAYAGEN")
+Local dDataVenc    := StoD(Year2Str(dDataBase)+Soma1(Month2Str(dDataBase))+cDiaMesAG)
+
+If Empty(cCodForTitP) .OR. Empty(cLojForTitP)
+  
+  lRet := .F.
+  
+  FWAlertHelp('Não foi identificado o preenchimento dos campos "Fornecedor e Loja" para o vendedor '+oModelSZ2:GetValue("Z2_NOMVEND"),;
+              'Acesse o cadastro do vendedor e preencha os campos (Fornecedor e Loja) disponíveis na aba "Pagamento de Comissão".')
+
+  Return
+EndIf 
+
+    aAdd(aVetSE2, {"E2_NUM"     , cNumero       , Nil})
+    aAdd(aVetSE2, {"E2_PREFIXO" , "COM"         , Nil})
+    aAdd(aVetSE2, {"E2_TIPO"    , "AGE"         , Nil})
+    aAdd(aVetSE2, {"E2_NATUREZ" , cNatTitP      , Nil})
+    aAdd(aVetSE2, {"E2_FORNECE" , cCodForTitP   , Nil})
+    aAdd(aVetSE2, {"E2_LOJA"    , cLojForTitP   , Nil})
+    aAdd(aVetSE2, {"E2_VENCTO"  , dDataVenc     , Nil})
+    aAdd(aVetSE2, {"E2_VALOR"   , nValor        , Nil})
+    aAdd(aVetSE2, {"E2_CCUSTO"  , "000000001"   , Nil})
+    aAdd(aVetSE2, {"E2_VALOR"   , "GERADO ATRAVES DO PROC. DE AGENCIAMENTO" , Nil})
+    aAdd(aVetSE2, {"E2_XTOKEN"  , cToken        , Nil})
+
+    Begin Transaction
+        lMsErroAuto := .F.
+        MSExecAuto({|x,y| FINA050(x,y)}, aVetSE2, 3)
+        
+        If lMsErroAuto
+          MostraErro()
+          lRet := .F.
+          DisarmTransaction()
+        Else 
+          FWAlertSuccess("Título a Pagar: "+SE2->E2_NUM+", gravado com sucesso.")
+        EndIf
+    End Transaction
+
+Return 
 
 /*---------------------------------------------------------------------*
  | Func:  FWProcNFSe()                                                 |
@@ -482,6 +536,7 @@ Local cTES      := SuperGetMV("VZ_TESSERV")
       aadd(aCabec, {"C5_TIPLIB" , "1",             Nil})
       aadd(aCabec, {"C5_NATUREZ", cNaturez,        Nil})
       aadd(aCabec, {"C5_XMSGNFE", cDescServ,       Nil})
+      aadd(aCabec, {"C5_XTOKEN" , cToken,          Nil})
 
       aLinha := {}
       aadd(aLinha,{"C6_ITEM",    "01",      Nil})
@@ -507,77 +562,6 @@ Local cTES      := SuperGetMV("VZ_TESSERV")
       End Transaction
    
 Return
-
-/*---------------------------------------------------------------------*
- | Func:  FWProcTitP()                                                 |
- | Desc:  Grava Título a Pagar para comissão do Vendedor               |
- | Obs.:  /                                                            |
- *---------------------------------------------------------------------*/
-Static Function FWProcTitP()
-Local aVetSE2      := {}
-Local cNumero      := xGetNumSE2()
-Local cCodForTitP  := Alltrim(Posicione("SA3",1,FWxFilial("SA3")+oModelSZ2:GetValue("Z2_CODVEN"),"A3_FORNECE"))
-Local cLojForTitP  := Alltrim(Posicione("SA3",1,FWxFilial("SA3")+oModelSZ2:GetValue("Z2_CODVEN"),"A3_LOJA"))
-Local cNatTitP     := SuperGetMV("VZ_NATAGEN")
-Local cDiaMesAG    := SuperGetMV("VZ_DAYAGEN")
-Local dDataVenc    := StoD(Year2Str(dDataBase)+Soma1(Month2Str(dDataBase))+cDiaMesAG)
-
-If Empty(cCodForTitP) .OR. Empty(cLojForTitP)
-  
-  lRet := .F.
-  
-  FWAlertHelp('Não foi identificado o preenchimento dos campos "Fornecedor e Loja" para o vendedor '+oModelSZ2:GetValue("Z2_NOMVEND"),;
-              'Acesse o cadastro do vendedor e preencha os campos (Fornecedor e Loja) disponíveis na aba "Pagamento de Comissão".')
-
-    aAdd(aCabec, {"C5_NUM", cNumPedGer ,Nil})
-    lMsErroAuto := .F.
-    FWMsgRun(, {|| MSExecAuto({|a, b, c| MATA410(a, b, c)}, aCabec, aItens, 5) },;
-               "Aguarde...","Excluindo o Pedido de Venda: "+cNumPedGer)
-
-    If lMsErroAuto
-      MostraErro()
-    EndIf
-
-  Return
-EndIf 
-
-    aAdd(aVetSE2, {"E2_NUM"     , cNumero       , Nil})
-    aAdd(aVetSE2, {"E2_PREFIXO" , "COM"         , Nil})
-    aAdd(aVetSE2, {"E2_TIPO"    , "AGE"         , Nil})
-    aAdd(aVetSE2, {"E2_NATUREZ" , cNatTitP      , Nil})
-    aAdd(aVetSE2, {"E2_FORNECE" , cCodForTitP   , Nil})
-    aAdd(aVetSE2, {"E2_LOJA"    , cLojForTitP   , Nil})
-    aAdd(aVetSE2, {"E2_VENCTO"  , dDataVenc     , Nil})
-    aAdd(aVetSE2, {"E2_VALOR"   , nValor        , Nil})
-    aAdd(aVetSE2, {"E2_CCUSTO"  , "000000001"   , Nil})
-    aAdd(aVetSE2, {"E2_VALOR"   , "GERADO ATRAVES DO PROC. DE AGENCIAMENTO" , Nil})
-
-    Begin Transaction
-        lMsErroAuto := .F.
-        MSExecAuto({|x,y| FINA050(x,y)}, aVetSE2, 3)
-        
-        If lMsErroAuto
-          MostraErro()
-
-          lRet := .F.
-
-          aAdd(aCabec, {"C5_NUM", cNumPedGer ,Nil})
-          lMsErroAuto := .F.
-          FWMsgRun(, {|| MSExecAuto({|a, b, c, d| MATA410(a, b, c, d)}, aCabec, aItens, 5, .F.) },;
-                      "Aguarde...","Excluindo o Pedido de Venda: "+cNumPedGer)
-
-          If lMsErroAuto
-            MostraErro()
-          EndIf 
-
-          DisarmTransaction()
-
-        Else 
-          FWAlertSuccess("Título a Pagar: "+SE2->E2_NUM+", gravado com sucesso.")
-        EndIf
-    End Transaction
-
-Return 
 
 /*---------------------------------------------------------------------*
  | Func:  xGetNumSE2()                                                 |
@@ -616,37 +600,121 @@ RestArea(aArea)
 
 Return cNum
 
-/*----------------------------------------------------------------------------------------*
- | Func:  xGetToken()                                                                     |
- | Desc:  Gera Código sequencial para controle de transação nas parcelas do agenciamento  |
- | Obs.:  /                                                                               |
- *---------------------------------------------------------------------------------------*/
-Static Function xGetToken()
+/*---------------------------------------------------------------------*
+ | Func:  FWEstorno()                                                  |
+ | Desc:  Efetua o estorno do Título e/ou Pedido de Venda              |
+ | Obs.:  /                                                            |
+ *---------------------------------------------------------------------*/
+User Function FWEstorno()
 Local aArea   := GetArea()
+Local aVetSE2 := {}
+Local aCabec  := {}
+Local aItens  := {}
+Local aLinha  := {}
 Local _cAlias := "TMP_"+StrTran(Time(),":","")
-Local cToken  := ""
 
 BeginSql alias _cAlias
     SELECT
-        Z1_TOKEN
+        E2_PREFIXO,
+        E2_NUM,
+        E2_PARELA,
+        E2_TIPO
+        E2_XTOKEN
     FROM
-        %table:SZ1% SZ1
+        %table:SE2% SE2
     WHERE
-        SZ1.Z1_FILIAL  = %xfilial:SZ1% AND
-        SZ1.%notDel% 
-        ORDER BY SZ1.Z1_TOKEN DESC
+        SE2.E2_FILIAL  = %xfilial:SE2% AND
+        SE2.E2_XTOKEN  = %Exp:cToken%
+        SE2.%notDel% 
+        ORDER BY SE2.E2_NUM
 EndSql
 
-If !(_cAlias)->(EOF())
-  (_cAlias)->(DBGotop())
-  cToken := Soma1((_cAlias)->Z1_TOKEN)
-EndIf
+While!(_cAlias)->(EOF())
+  
+  DBSelectArea('SE2')
+  SE2->(DBSetOrder(1))
+  If SE2->(MSSeek(xFilial('SE2')+(_cAlias)->E2_PREFIXO+(_cAlias)->E2_NUM+(_cAlias)->E2_PARCELA+(_cAlias)->E2_TIPO))
+    
+    aVetSE2 := {}
 
-If Empty(cToken)
-  cToken := Soma1(Strzero(0,GetSx3Cache("Z1_TOKEN","X3_TAMANHO")))
-EndIf
+    aAdd(aVetSE2, {"E2_PREFIXO", (_cAlias)->E2_PREFIXO, Nil})
+    aAdd(aVetSE2, {"E2_NUM"    , (_cAlias)->E2_NUM,     Nil})
+
+    Begin Transaction
+      lMsErroAuto := .F.
+      MsExecAuto( { |x,y,z| FINA050(x,y,z)}, aVetSE2,, 5)
+          
+      If lMsErroAuto
+        MostraErro()
+        DisarmTransaction()
+      Else 
+        FWAlertSuccess("Título a Pagar: "+SE2->E2_NUM+", excluído.")
+      EndIf
+    End Transaction
+  EndIf 
+
+(_cAlias)->(DBSkip())
+EndDo 
 
 (_cAlias)->(dbCloseArea())
+
+BeginSql alias _cAlias
+    SELECT
+        C5_NUM,
+        C5_XTOKEN
+    FROM
+        %table:SC5% SC5
+    WHERE
+        SC5.C5_FILIAL  = %xfilial:SC5% AND
+        SC5.C5_XTOKEN  = %Exp:cToken%
+        SC5.%notDel% 
+EndSql
+
+While!(_cAlias)->(EOF())
+  
+  DBSelectArea('SC5')
+  SC5->(DBSetOrder(1))
+  If SC5->(MSSeek(xFilial('SC5')+(_cAlias)->C5_NUM))
+
+      aadd(aCabec, {"C5_TIPO"   , SC5->C5_TIPO,    Nil})
+      aadd(aCabec, {"C5_CLIENTE", SC5->C5_CLIENTE, Nil})
+      aadd(aCabec, {"C5_LOJACLI", SC5->C5_LOJACLI, Nil})
+      aadd(aCabec, {"C5_CONDPAG", SC5->C5_CONDPAG, Nil})
+
+      DBSelectArea('SC6')
+      SC6->(DBSetOrder(1))
+      If SC6->(MSSeek(xFilial('SC6')+(_cAlias)->C5_NUM))
+        While!SC6->(EOF())
+          aLinha := {}
+          aadd(aLinha,{"C6_ITEM",    SC6->C6_ITEM,     Nil})
+          aadd(aLinha,{"C6_PRODUTO", SC6->C6_PRODUTO,  Nil})
+          aadd(aLinha,{"C6_QTDVEN",  SC6->C6_QTDVEN,   Nil})
+          aadd(aLinha,{"C6_PRCVEN",  SC6->C6_PRCVEN,   Nil})
+          aadd(aLinha,{"C6_PRUNIT",  SC6->C6_PRUNIT,   Nil})
+          aadd(aLinha,{"C6_TES",     SC6->C6_TES,      Nil})
+          aadd(aItens, aLinha)
+        SC6->(DBSkip())
+        EndDo 
+      EndIf 
+
+    Begin Transaction
+      lMsErroAuto := .F.
+      MSExecAuto({|a, b, c| MATA410(a, b, c)}, aCabec, aItens, 5)
+          
+      If lMsErroAuto
+        MostraErro()
+        DisarmTransaction()
+      Else 
+        FWAlertSuccess("Pedido de Venda: "+(_cAlias)->C5_NUM+", excluído.")
+      EndIf
+    End Transaction
+  EndIf 
+
+(_cAlias)->(DBSkip())
+EndDo 
+
+(_cAlias)->(dbCloseArea())
+
 RestArea(aArea)
 
-Return cToken
+Return

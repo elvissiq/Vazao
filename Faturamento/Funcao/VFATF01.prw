@@ -173,6 +173,65 @@ Return
 
 User Function xEstorPac()
 
+Local aRet     := {}
+Local aOpcoes  := {}
+Local cTitulo  := "Seleção de Parcelas"
+Local _cAlias  := "TMP_"+StrTran(Time(),":","")
+Local cRet     := ""
+Local cPedido  := SC5->C5_NUM
+Local nTamChv  := GetSx3Cache("Z1_TOKEN", 'X3_TAMANHO')
+Local nId, nTotal
 
+Private cToken := ""
+
+BeginSql alias _cAlias
+  column Z1_VENCTO as Date
+  SELECT
+    SZ1.Z1_SEQ,
+    SZ1.Z1_VALOR,
+    SZ1.Z1_TOKEN
+  FROM
+    %table:SZ1% SZ1
+  WHERE
+    SZ1.Z1_FILIAL  = %xfilial:SZ1% AND
+    SZ1.Z1_PEDIDO  = %Exp:cPedido%
+    SZ1.%notDel% 
+EndSql
+
+(_cAlias)->(DbGoTop())
+Count To nTotal
+(_cAlias)->(DbGoTop())
+
+While!(_cAlias)->(EOF())
+  aAdd(aOpcoes, {(_cAlias)->Z1_SEQ +" - "+ (_cAlias)->Z1_VALOR })
+  //cRet := (_cAlias)->Z1_SEQ
+  (_cAlias)->(DbSkip())
+EndDo
+
+	// Executa f_Opcoes para Selecionar ou Mostrar os Registros Selecionados
+     IF f_Opcoes(    aRet        ,;    //Variavel de Retorno
+                     cTitulo     ,;    //Titulo da Coluna com as opcoes
+                     aOpcoes     ,;    //Opcoes de Escolha (Array de Opcoes)
+                     cRet        ,;    //String de Opcoes para Retorno
+                     NIL         ,;    //Nao Utilizado
+                     NIL         ,;    //Nao Utilizado
+                     .F.         ,;    //Se a Selecao sera de apenas 1 Elemento por vez
+                     nTamChv     ,;    //Tamanho da Chave
+                     nTotal      ,;    //No maximo de elementos na variavel de retorno
+                     .F.         ,;    //Inclui Botoes para Selecao de Multiplos Itens
+                     .F.         ,;    //Se as opcoes serao montadas a partir de ComboBox de Campo ( X3_CBOX )
+                     NIL         ,;    //Qual o Campo para a Montagem do aOpcoes
+                     .T.         ,;    //Nao Permite a Ordenacao
+                     .T.         ,;    //Nao Permite a Pesquisa    
+                     .T.         ,;    //Forca o Retorno Como Array
+                     ""           ;    //Consulta F3
+                )  
+	EndIF
+
+   For nId := 1 To Len(aRet)
+        cToken := aRet[nId]
+   Next nId 
+
+(_cAlias)->(DbCloseArea())
 
 Return
