@@ -13,6 +13,7 @@ Este ponto de entrada pode ser utilizado para inserir novas opções no array aRot
 User Function MA410MNU()
 
      If !IsBlind() 
+        aAdd(aRotina,{'Gerar Solicitacoes','U_MYMATA650C',0,3,0,NIL})
         aAdd(aRotina,{'Imprimir Pedido','U_zRPedVen',0,3,0,NIL})
      EndIf 
 
