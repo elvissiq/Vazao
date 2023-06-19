@@ -4,15 +4,14 @@
 #Include "TBICONN.CH"
 #Include "TopConn.ch"
 
-Static aFieldsSC5 := {"C5_NUM","C5_CLIENTE","C5_LOJACLI","C5_XNOME","C5_EMISSAO","C5_XFABRIC","C5_XLOJFAB","C5_XNFABRI"}
-Static cToken     := FWUUID(DToS(Date())+StrTran(Time(),":",""))
+Static aFieldsSC5 := {"C5_NUM","C5_CLIENTE","C5_LOJACLI","C5_XNOME","C5_EMISSAO","C5_XFABRIC","C5_XLOJFAB","C5_XNFABRI","C5_XTOTAL"}
 
 //----------------------------------------------------------------------
 /*/{PROTHEUS.DOC} VFATF02
 FUNÇÃO VFATF02 - Tela para Gerar comissão dos pedidos de agenciamento
-@OWNER PanCristal
+@OWNER VAZAO
 @VERSION PROTHEUS 12
-@SINCE 18/05/2023
+@SINCE 02/06/2023
 @Tratamento para comissao de Pedidos do tipo agenciamento
 /*/
 //----------------------------------------------------------------------
@@ -54,7 +53,8 @@ Local bPost      := {|| FWProcess() }
 
 	  oModel:SetPrimaryKey({})
 
-    oStructSZ1:AddTrigger("Z1_MARK" ,"Z1_DTPAG" ,{||.T.},{||IIF(Empty(FWFldGet("Z1_DTPAG")),dDataBase,CToD("  /  /    "))})
+    oStructSZ1:AddTrigger("Z1_MARK" ,"Z1_DTPAG" ,{||.T.},{||IIF(Empty(FWFldGet("Z1_DTPAG")),dDataBase,CToD("  /  /    ")) })
+    oStructSZ1:AddTrigger("Z1_MARK" ,"Z1_UUID"  ,{||.T.},{|| cUUID })
 
     oModel:GetModel('SZ1DETAIL'):SetOptional(.T.)
     oModel:GetModel('SZ2DETAIL'):SetOptional(.T.)
@@ -77,7 +77,7 @@ Local oView
 Local oModel     := FWLoadModel('VFATF02')
 Local oStructSC5 := fnV01SC5()
 Local oStructSZ1 := FWFormStruct(2, 'SZ1')
-Local oStructSZ2 := FWFormStruct(2, 'SZ2')   
+Local oStructSZ2 := FWFormStruct(2, 'SZ2')
 
     //Criando a View
     oView := FWFormView():New()
@@ -90,7 +90,7 @@ Local oStructSZ2 := FWFormStruct(2, 'SZ2')
     oView:AddGrid('VIEW_SZ2', oStructSZ2,'SZ2DETAIL')
 
     oView:SetAfterViewActivate({|oView| ViewActv(oView)})
-     
+
     //Setando o dimensionamento de tamanho
     oView:CreateHorizontalBox('CABEC',30)
     oView:CreateHorizontalBox("GRID" ,70)
@@ -180,7 +180,7 @@ Local oModelSC5 := oModel:GetModel("SC5MASTER")
 Local oModelSZ1 := oModel:GetModel("SZ1DETAIL")
 Local oModelSZ2 := oModel:GetModel("SZ2DETAIL")
 Local cNomeCli  := Posicione("SA1",1,FWxFilial("SA1")+SC5->C5_CLIENTE+SC5->C5_LOJACLI,"A1_NOME")
-Local nTotalPed := zTotPed(SC5->C5_NUM)
+Local nTotalPed := U_zTotPed(SC5->C5_NUM)
 Local aParcelas := Condicao(nTotalPed,SC5->C5_CONDPAG,0,SC5->C5_EMISSAO,0) //Condicao(nValTot,cCond,nVIPI,dData,nVSol)
 Local cCodVend  := ""
 Local cNomVend  := ""
@@ -199,6 +199,11 @@ Local nY
         oModelSC5:SetValue("C5_XFABRIC" , SC5->C5_XFABRIC)
         oModelSC5:SetValue("C5_XLOJFAB" , SC5->C5_XLOJFAB)
         oModelSC5:SetValue("C5_XNFABRI" , SC5->C5_XNFABRI)
+        If Empty(SC5->C5_XTOTAL)
+          oModelSC5:SetValue("C5_XTOTAL" , nTotalPed)
+        Else 
+          oModelSC5:SetValue("C5_XTOTAL" , SC5->C5_XTOTAL)
+        EndIF
         oView:Refresh('VIEW_SC5')
   EndIf
 
@@ -218,7 +223,6 @@ Local nY
           oModelSZ1:SetValue("Z1_DTPAG"   , CToD("  /  /    "))
           oModelSZ1:SetValue("Z1_PEDIDO"  , SC5->C5_NUM)
           oModelSZ1:SetValue("Z1_CONDPAG" , SC5->C5_CONDPAG)
-          oModelSZ1:SetValue("Z1_TOKEN"   , cToken)
 
       EndIf
   Next nY
@@ -228,7 +232,6 @@ Local nY
   oModelSZ2:SetValue("Z2_PCOMIS"  , 5.00)
   oModelSZ2:SetValue("Z2_CODVEN"  , cVendPad)
   oModelSZ2:SetValue("Z2_NOMVEND" , Alltrim(Posicione("SA3",1,FWxFilial("SA3")+cVendPad,"A3_NOME")))
-  oModelSZ2:SetValue("Z2_TOKEN"   , cToken)
 
   //Preenche os vendedores do Pedido de Venda
   For nY := 1 To 5
@@ -248,7 +251,6 @@ Local nY
             oModelSZ2:SetValue("Z2_PCOMIS"  , nPComis)
             oModelSZ2:SetValue("Z2_CODVEN"  , cCodVend)
             oModelSZ2:SetValue("Z2_NOMVEND" , cNomVend)
-            oModelSZ2:SetValue("Z2_TOKEN"   , cToken)
           
         EndIf
       EndIf 
@@ -268,7 +270,7 @@ Return
  | Desc:  Retorna o total do Pedido com os impostos                    |
  | Obs.:  /                                                            |
  *---------------------------------------------------------------------*/
-Static Function zTotPed(cNumPed)
+User Function zTotPed(cNumPed)
 Local aArea     := GetArea()
 Local aAreaC5   := SC5->(GetArea())
 Local aAreaB1   := SB1->(GetArea())
@@ -398,11 +400,13 @@ Local nId
                       
                       nValComis += Round(FWFldGet("Z1_VALOR") * (oModelSZ2:GetValue("Z2_PCOMIS")/100),2)
                       oModelSZ2:SetValue("Z2_VALOR", nValComis )
+                      oModelSZ2:SetValue("Z2_UUID", cUUID )
 
                   Case (xCurrentValue)
                       
                       nValComis := (nValComis - Round(FWFldGet("Z1_VALOR") * (oModelSZ2:GetValue("Z2_PCOMIS")/100),2))
                       oModelSZ2:SetValue("Z2_VALOR", nValComis )
+                      oModelSZ2:SetValue("Z2_UUID", cUUID )
 
               End Do 
             Next nId 
@@ -438,8 +442,9 @@ For nId := 2 To oModelSZ2:Length(.T.)
   oModelSZ2:SetLine(nId)
   If oModelSZ2:IsUpdated(nId)          
     nValor := oModelSZ2:GetValue("Z2_VALOR")
-        
-    If nValor > 0 .And. lRet
+    cUUID  := oModelSZ2:GetValue("Z2_UUID")
+
+    If nValor > 0 .And. lRet .And. !Empty(cUUID)
       cNomeReduz := Alltrim(Posicione("SA3",1,FWxFilial("SA3")+oModelSZ2:GetValue("Z2_CODVEN"),"A3_NREDUZ"))
       FWMsgRun(, {|| FWProcTitP()},"Aguarde...","Gravando Título a Pagar para o Vendedor: "+cNomeReduz)
     EndIf
@@ -452,8 +457,9 @@ If lRet
   If oModelSZ2:IsUpdated(1)
     oModelSZ2:SetLine(1)  
     nValor := oModelSZ2:GetValue("Z2_VALOR")
+    cUUID  := oModelSZ2:GetValue("Z2_UUID")
 
-    If nValor > 0 
+    If nValor > 0 .And. !Empty(cUUID)
       FWMsgRun(, {|| FWProcNFSe()},"Aguarde...","Gravando Pedido de Venda...")
     EndIf
 
@@ -461,7 +467,7 @@ If lRet
 EndIf
 
 If !lRet 
-  U_FWEstorno()
+  FWMsgRun(, {|| U_FWEstorno()},"Aguarde...","Executando estorno...")
 EndIf 
 
 Return lRet
@@ -499,8 +505,8 @@ EndIf
     aAdd(aVetSE2, {"E2_VENCTO"  , dDataVenc     , Nil})
     aAdd(aVetSE2, {"E2_VALOR"   , nValor        , Nil})
     aAdd(aVetSE2, {"E2_CCUSTO"  , "000000001"   , Nil})
-    aAdd(aVetSE2, {"E2_VALOR"   , "GERADO ATRAVES DO PROC. DE AGENCIAMENTO" , Nil})
-    aAdd(aVetSE2, {"E2_XTOKEN"  , cToken        , Nil})
+    aAdd(aVetSE2, {"E2_HIST"    , "GERADO ATRAVES DO PROC. DE AGENCIAMENTO" , Nil})
+    aAdd(aVetSE2, {"E2_XUUID"   , cUUID        , Nil})
 
     Begin Transaction
         lMsErroAuto := .F.
@@ -536,7 +542,7 @@ Local cTES      := SuperGetMV("VZ_TESSERV")
       aadd(aCabec, {"C5_TIPLIB" , "1",             Nil})
       aadd(aCabec, {"C5_NATUREZ", cNaturez,        Nil})
       aadd(aCabec, {"C5_XMSGNFE", cDescServ,       Nil})
-      aadd(aCabec, {"C5_XTOKEN" , cToken,          Nil})
+      aadd(aCabec, {"C5_XUUID"  , cUUID,          Nil})
 
       aLinha := {}
       aadd(aLinha,{"C6_ITEM",    "01",      Nil})
@@ -570,7 +576,7 @@ Return
  *---------------------------------------------------------------------*/
 Static Function xGetNumSE2()
 Local aArea   := GetArea()
-Local _cAlias := "TMP_"+StrTran(Time(),":","")
+Local _cAlias := "TMP_"+FWTimeStamp(1)
 Local cNum    := ""
 
 BeginSql alias _cAlias
@@ -606,30 +612,31 @@ Return cNum
  | Obs.:  /                                                            |
  *---------------------------------------------------------------------*/
 User Function FWEstorno()
-Local aArea   := GetArea()
-Local aVetSE2 := {}
-Local aCabec  := {}
-Local aItens  := {}
-Local aLinha  := {}
-Local _cAlias := "TMP_"+StrTran(Time(),":","")
+Local aArea    := GetArea()
+Local aVetSE2  := {}
+Local aCabec   := {}
+Local aItens   := {}
+Local aLinha   := {}
+Local _cAlias  := "TMPE2_"+FWTimeStamp(1)
+Local _cAlias2 := "TMPC5_"+FWTimeStamp(1)
 
 BeginSql alias _cAlias
     SELECT
         E2_PREFIXO,
         E2_NUM,
-        E2_PARELA,
-        E2_TIPO
-        E2_XTOKEN
+        E2_PARCELA,
+        E2_TIPO,
+        E2_XUUID
     FROM
-        %table:SE2% SE2
+        %table:SE2%
     WHERE
-        SE2.E2_FILIAL  = %xfilial:SE2% AND
-        SE2.E2_XTOKEN  = %Exp:cToken%
-        SE2.%notDel% 
-        ORDER BY SE2.E2_NUM
+        E2_FILIAL = %xfilial:SE2% AND
+        E2_XUUID  = %Exp:cUUID% AND
+        %notDel% 
+        ORDER BY E2_NUM
 EndSql
 
-While!(_cAlias)->(EOF())
+While !(_cAlias)->(EOF())
   
   DBSelectArea('SE2')
   SE2->(DBSetOrder(1))
@@ -647,8 +654,6 @@ While!(_cAlias)->(EOF())
       If lMsErroAuto
         MostraErro()
         DisarmTransaction()
-      Else 
-        FWAlertSuccess("Título a Pagar: "+SE2->E2_NUM+", excluído.")
       EndIf
     End Transaction
   EndIf 
@@ -656,18 +661,20 @@ While!(_cAlias)->(EOF())
 (_cAlias)->(DBSkip())
 EndDo 
 
-(_cAlias)->(dbCloseArea())
+If Select(_cAlias) > 0
+  (_cAlias)->(dbCloseArea())
+EndIf
 
 BeginSql alias _cAlias
     SELECT
         C5_NUM,
-        C5_XTOKEN
+        C5_XUUID
     FROM
-        %table:SC5% SC5
+        %table:SC5%
     WHERE
-        SC5.C5_FILIAL  = %xfilial:SC5% AND
-        SC5.C5_XTOKEN  = %Exp:cToken%
-        SC5.%notDel% 
+        C5_FILIAL = %xfilial:SC5% AND
+        C5_XUUID  = %Exp:cUUID% AND
+        %notDel% 
 EndSql
 
 While!(_cAlias)->(EOF())
@@ -681,21 +688,31 @@ While!(_cAlias)->(EOF())
       aadd(aCabec, {"C5_LOJACLI", SC5->C5_LOJACLI, Nil})
       aadd(aCabec, {"C5_CONDPAG", SC5->C5_CONDPAG, Nil})
 
-      DBSelectArea('SC6')
-      SC6->(DBSetOrder(1))
-      If SC6->(MSSeek(xFilial('SC6')+(_cAlias)->C5_NUM))
-        While!SC6->(EOF())
-          aLinha := {}
-          aadd(aLinha,{"C6_ITEM",    SC6->C6_ITEM,     Nil})
-          aadd(aLinha,{"C6_PRODUTO", SC6->C6_PRODUTO,  Nil})
-          aadd(aLinha,{"C6_QTDVEN",  SC6->C6_QTDVEN,   Nil})
-          aadd(aLinha,{"C6_PRCVEN",  SC6->C6_PRCVEN,   Nil})
-          aadd(aLinha,{"C6_PRUNIT",  SC6->C6_PRUNIT,   Nil})
-          aadd(aLinha,{"C6_TES",     SC6->C6_TES,      Nil})
-          aadd(aItens, aLinha)
-        SC6->(DBSkip())
-        EndDo 
-      EndIf 
+      BeginSql alias _cAlias2
+        SELECT *
+        FROM
+          %table:SC6%
+        WHERE
+          C6_FILIAL = %xfilial:SC6% AND
+          C6_NUM    = %Exp:(_cAlias)->C5_NUM% AND
+          %notDel% 
+      EndSql
+
+      While!(_cAlias2)->(EOF())
+        aLinha := {}
+        aadd(aLinha,{"C6_ITEM",    (_cAlias2)->C6_ITEM,     Nil})
+        aadd(aLinha,{"C6_PRODUTO", (_cAlias2)->C6_PRODUTO,  Nil})
+        aadd(aLinha,{"C6_QTDVEN",  (_cAlias2)->C6_QTDVEN,   Nil})
+        aadd(aLinha,{"C6_PRCVEN",  (_cAlias2)->C6_PRCVEN,   Nil})
+        aadd(aLinha,{"C6_PRUNIT",  (_cAlias2)->C6_PRUNIT,   Nil})
+        aadd(aLinha,{"C6_TES",     (_cAlias2)->C6_TES,      Nil})
+        aadd(aItens, aLinha)
+      (_cAlias2)->(DBSkip())
+      EndDo
+
+      If Select(_cAlias2) > 0                                 
+        (_cAlias2)->(dbCloseArea())
+      EndIf
 
     Begin Transaction
       lMsErroAuto := .F.
@@ -704,8 +721,6 @@ While!(_cAlias)->(EOF())
       If lMsErroAuto
         MostraErro()
         DisarmTransaction()
-      Else 
-        FWAlertSuccess("Pedido de Venda: "+(_cAlias)->C5_NUM+", excluído.")
       EndIf
     End Transaction
   EndIf 
@@ -713,7 +728,9 @@ While!(_cAlias)->(EOF())
 (_cAlias)->(DBSkip())
 EndDo 
 
-(_cAlias)->(dbCloseArea())
+If Select(_cAlias) > 0
+  (_cAlias)->(dbCloseArea())
+EndIf
 
 RestArea(aArea)
 
