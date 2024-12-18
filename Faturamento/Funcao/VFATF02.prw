@@ -484,7 +484,7 @@ Local cCodForTitP  := Alltrim(Posicione("SA3",1,FWxFilial("SA3")+oModelSZ2:GetVa
 Local cLojForTitP  := Alltrim(Posicione("SA3",1,FWxFilial("SA3")+oModelSZ2:GetValue("Z2_CODVEN"),"A3_LOJA"))
 Local cNatTitP     := SuperGetMV("VZ_NATAGEN")
 Local cDiaMesAG    := SuperGetMV("VZ_DAYAGEN")
-Local dDataVenc    := StoD(Year2Str(dDataBase)+Soma1(Month2Str(dDataBase))+cDiaMesAG)
+Local dDataVenc    := MonthSum(StoD(Year2Str(dDataBase)+Month2Str(dDataBase)+cDiaMesAG),1)
 
 If Empty(cCodForTitP) .OR. Empty(cLojForTitP)
   
